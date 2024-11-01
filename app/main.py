@@ -31,17 +31,18 @@ options.add_argument("--start-maximized")
 
 @app.post("/nassau_county")
 async def nassau_county(last_name: str = Form(...), first_name: str = Form(...)):
-    if not last_name:
-        raise HTTPException(status_code=400, detail="Last name are required for the search.")
+    if not last_name or not first_name:
+        raise HTTPException(status_code=400, detail="First Name and Last Name are required for the search.")
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
     try:
         driver.get("https://i2f.uslandrecords.com/NY/Nassau/D/Default.aspx")
-        time.sleep(3)
+        time.sleep(10)
+        
 
-        select_element = Select(driver.find_element(By.ID, "SearchCriteriaOffice1_DDL_OfficeName"))
-        select_element.select_by_value("Judgments")
+        select_element1 = Select(driver.find_element(By.ID, "SearchCriteriaOffice1_DDL_OfficeName"))
+        select_element1.select_by_value("Deeds/Mortgages")
 
         last_name_input = driver.find_element(By.ID, "SearchFormEx1_ACSTextBox_LastName1")
         last_name_input.clear()
@@ -50,6 +51,12 @@ async def nassau_county(last_name: str = Form(...), first_name: str = Form(...))
         first_name_input = driver.find_element(By.ID, "SearchFormEx1_ACSTextBox_FirstName1")
         first_name_input.clear()
         first_name_input.send_keys(first_name)
+
+        select_element2 = Select(driver.find_element(By.ID, "SearchFormEx1_ACSRadioButtonList_PartyType1"))
+        select_element2.select_by_value("D")
+
+        select_element3 = Select(driver.find_element(By.ID, "SearchFormEx1_ACSRadioButtonList_NameType1"))
+        select_element3.select_by_value("P")
 
         search_button = driver.find_element(By.ID, "SearchFormEx1_btnSearch")
         search_button.click()
@@ -103,8 +110,8 @@ async def nassau_county(last_name: str = Form(...), first_name: str = Form(...))
 
 @app.post("/suffolk_county")
 async def suffolk_county(last_name: str = Form(...), first_name: str = Form(...)):
-    if not last_name :
-        raise HTTPException(status_code=400, detail="Last name are required for the search.")
+    if not last_name or not first_name:
+        raise HTTPException(status_code=400, detail="First Name and Last Name are required for the search.")
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
