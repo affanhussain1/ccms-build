@@ -40,7 +40,6 @@ async def nassau_county(last_name: str = Form(...), first_name: str = Form(...))
     try:
         driver.get("https://i2f.uslandrecords.com/NY/Nassau/D/Default.aspx")
         time.sleep(10)
-        
 
         select_element1 = Select(driver.find_element(By.ID, "SearchCriteriaOffice1_DDL_OfficeName"))
         select_element1.select_by_value("Deeds/Mortgages")
@@ -179,12 +178,12 @@ async def suffolk_county(last_name: str = Form(...), first_name: str = Form(...)
                     # Check if the 'Next' button exists and is enabled
                     next_button = driver.find_element(By.ID, f"t{section}_next")
                     if "disabled" in next_button.get_attribute("class"):
-                        break
+                        break  # Exit loop if 'Next' button is disabled
                     next_button.click()
                     time.sleep(2)
                 except NoSuchElementException:
                     print(f"No 'Next' button found for {section}, stopping pagination.")
-                    break
+                    break  # Exit loop if 'Next' button does not exist for the section
                 except Exception as e:
                     print(f"Error occurred when trying to click 'Next' for {section}: {e}")
                     break
@@ -199,6 +198,115 @@ async def suffolk_county(last_name: str = Form(...), first_name: str = Form(...)
 
     finally:
         driver.quit()
+
+
+@app.post("/appext")
+async def ucc_search(first_name: str = Form(...), last_name: str = Form(...)):
+    if not last_name or not first_name:
+        raise HTTPException(status_code=400, detail="First Name and Last Name are required for the search.")
+
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    
+    try:
+        driver.get("https://appext20.dos.ny.gov/pls/ucc_public/web_search.main_frame")
+
+        driver.switch_to.frame("main")
+        debtor_search_link = WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.LINK_TEXT, "NYS Standard Debtor Search"))
+        )
+        debtor_search_link.click()
+
+        driver.switch_to.default_content()
+        driver.switch_to.frame("rframe")
+
+        WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.ID, "pfirst"))
+        )
+        driver.find_element(By.ID, "pname").send_keys("")
+        driver.find_element(By.ID, "plast").send_keys(last_name)
+        driver.find_element(By.ID, "pfirst").send_keys(first_name)
+        driver.find_element(By.ID, "sbutton").click()
+
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "form"))
+        )
+
+        results_data = []
+        
+        debtor_tables = driver.find_elements(By.XPATH, "//table[@align='CENTER'][@width='100%']")
+        for debtor_table in debtor_tables:
+            try:
+                debtors = []
+                all_rows = debtor_table.find_elements(By.XPATH, ".//tr")
+                collecting_debtors = True
+                
+                for row in all_rows:
+                    if "Secured Party Names" in row.text:
+                        collecting_debtors = False
+                        continue
+
+                    if collecting_debtors:
+                        debtor_name = row.find_element(By.XPATH, "./td[3]/font/b").text if row.find_elements(By.XPATH, "./td[3]/font/b") else None
+                        debtor_address = row.find_element(By.XPATH, "./td[4]/font/b").text if row.find_elements(By.XPATH, "./td[4]/font/b") else None
+                        if debtor_name:
+                            debtors.append({
+                                "debtor_name": debtor_name,
+                                "debtor_address": debtor_address
+                            })
+
+                secured_parties = []
+                collecting_secured_parties = False
+
+                for row in all_rows:
+                    if "Secured Party Names" in row.text:
+                        collecting_secured_parties = True
+                        continue
+
+                    if collecting_secured_parties:
+                        secured_name = row.find_element(By.XPATH, "./td[3]/font/b").text if row.find_elements(By.XPATH, "./td[3]/font/b") else None
+                        secured_address = row.find_element(By.XPATH, "./td[4]/font/b").text if row.find_elements(By.XPATH, "./td[4]/font/b") else None
+                        if not secured_name:
+                            break
+                        secured_parties.append({
+                            "secured_party_name": secured_name,
+                            "secured_party_address": secured_address
+                        })
+
+                filings_table = debtor_table.find_element(By.XPATH, "following-sibling::table[1]")
+                filings_rows = filings_table.find_elements(By.XPATH, ".//tr[td]")
+
+                filings = []
+                for filing_row in filings_rows:
+                    file_no = filing_row.find_element(By.XPATH, "./td[1]/font").text if filing_row.find_elements(By.XPATH, "./td[1]/font") else "N/A"
+                    file_date = filing_row.find_element(By.XPATH, "./td[2]/font").text if filing_row.find_elements(By.XPATH, "./td[2]/font") else "N/A"
+                    lapse_date = filing_row.find_element(By.XPATH, "./td[3]/font").text if filing_row.find_elements(By.XPATH, "./td[3]/font") else "N/A"
+                    filing_type = filing_row.find_element(By.XPATH, "./td[4]/font").text if filing_row.find_elements(By.XPATH, "./td[4]/font") else "N/A"
+                    pages = filing_row.find_element(By.XPATH, "./td[5]/font").text if filing_row.find_elements(By.XPATH, "./td[5]/font") else "N/A"
+                    image_link = filing_row.find_element(By.XPATH, "./td[6]/font/a").get_attribute("href") if filing_row.find_elements(By.XPATH, "./td[6]/font/a") else "N/A"
+
+                    filings.append({
+                        "file_no": file_no,
+                        "file_date": file_date,
+                        "lapse_date": lapse_date,
+                        "filing_type": filing_type,
+                        "pages": pages,
+                        "image_link": image_link
+                    })
+                
+                results_data.append({
+                    "debtors": debtors,
+                    "secured_parties": secured_parties,
+                    "filings": filings
+                })
+            
+            except Exception as e:
+                print(f"Error processing debtor table: {e}")
+
+        return {"status": "success", "data": results_data}
+
+    finally:
+        driver.quit()
+
 
 if __name__ == '__main__':
     uvicorn.run(app, host="0.0.0.0", port=8000)
