@@ -7,6 +7,7 @@ from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import NoSuchElementException
 import uvicorn
 import time
 
@@ -117,16 +118,19 @@ async def suffolk_county(last_name: str = Form(...), first_name: str = Form(...)
     
     try:
         driver.get("https://clerk.suffolkcountyny.gov/kiosk/Agreement.aspx")
+
+        time.sleep(10)
+
+        cmdIAgree = driver.find_element(By.ID, "cmdIAgree")
+        cmdIAgree.click()
+
+        time.sleep(5)
+
+        HERE_button = driver.find_element(By.LINK_TEXT, "HERE")
+        HERE_button.click()
         
-        WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.ID, "cmdIAgree"))
-        ).click()
-        
-        WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.LINK_TEXT, "HERE"))
-        ).click()
-        
-        time.sleep(3)
+        time.sleep(5)
+
         radio_btn = driver.find_element(By.ID, "radio_name")
         radio_btn.click()
 
@@ -137,6 +141,8 @@ async def suffolk_county(last_name: str = Form(...), first_name: str = Form(...)
         driver.find_element(By.ID, "inputFirstName").send_keys(first_name)
 
         driver.find_element(By.ID, "cmdSearchName").click()
+
+        driver.find_element(By.ID, "tJudgments")
 
         WebDriverWait(driver, 90).until(
             EC.visibility_of_element_located((By.ID, "tJudgments"))
@@ -151,6 +157,7 @@ async def suffolk_county(last_name: str = Form(...), first_name: str = Form(...)
 
             while True:
                 try:
+                    # Get the rows for the current section
                     rows = driver.find_elements(By.XPATH, f"//div[@id='c{section}']//table/tbody/tr")
                     headers = driver.find_elements(By.XPATH, f"//div[@id='c{section}']//table/thead/tr/th")
                     header_names = [header.text.strip() for header in headers]
@@ -169,13 +176,17 @@ async def suffolk_county(last_name: str = Form(...), first_name: str = Form(...)
                     break
 
                 try:
+                    # Check if the 'Next' button exists and is enabled
                     next_button = driver.find_element(By.ID, f"t{section}_next")
                     if "disabled" in next_button.get_attribute("class"):
                         break
                     next_button.click()
                     time.sleep(2)
+                except NoSuchElementException:
+                    print(f"No 'Next' button found for {section}, stopping pagination.")
+                    break
                 except Exception as e:
-                    print(f"No 'Next' button found for {section} or other error: {e}")
+                    print(f"Error occurred when trying to click 'Next' for {section}: {e}")
                     break
 
             if not has_data:
